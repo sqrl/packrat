@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head lang="en">
+    <meta charset="UTF-8">
+    <title>Packrat</title>
+    <script type="text/javascript">
+    <!--//
+    console.log("Start")
+    // TODO: If this becomes more serious, replace with real jQuery, etc.
+    function changeAction() {
+        console.log("/" + document.getElementsByName("key")[0].value)
+        document.getElementsByName("upload")[0].action = "/" + document.getElementsByName("key")[0].value;
+    }
+    //-->
+    </script>
+</head>
+<body>
+<img src="{{ url_for('static', filename='packrat.png') }}" width="256">
+<h2>Packrat File Upload</h2>
+<form action="" method="post" name="upload" enctype="multipart/form-data">
+    <label for="key">Key</label>
+    <input type="text", name="key">
+    <input type="file", name="file">
+    <input type="submit", value="Submit", onClick="changeAction();">
+</form>
+<h2>Cache Stats</h2>
+<p>Serving {{ files }} files, consuming {{ total_size }} out of {{ max_size }} bytes.</p>
+</body>
+</html>

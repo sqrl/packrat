@@ -1,0 +1,14 @@
+/ve
+/etc/*.ini
+*.egg
+__pycache__
+/version.txt
+.idea
+
+# os crud #
+.DS_Store
+.DS_Store?
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db

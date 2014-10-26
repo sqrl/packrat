@@ -1,0 +1,7 @@
+[packrat]
+host = 0.0.0.0
+port = 5000
+
+# If storage location does not start with / it will be relative
+# to the packrat root.
+db_location = storage
