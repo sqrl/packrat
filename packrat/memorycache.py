@@ -29,7 +29,7 @@ class MemoryCache(object):
             target (int): The target size.
         """
         while self.total_content > target:
-            item = self.files.popitem(last=False)
+            key, item = self.files.popitem(last=False)
             self.total_content = self.total_content - item['size']
 
 

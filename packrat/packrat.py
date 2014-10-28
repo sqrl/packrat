@@ -1,5 +1,7 @@
+from configparser import ConfigParser
 from io import BytesIO
 from os import getenv
+from sys import argv, exit
 
 from flask import abort, Flask, render_template, request, send_file
 
@@ -37,6 +39,15 @@ def status_screen():
 
 
 if __name__ == '__main__':
-    host = getenv('WEB_HOST', "0.0.0.0")
-    port = getenv('WEB_PORT', "5000")
-    app.run(host=host, port=int(port), debug=True)
+    if len(argv) != 2:
+        exit("Usage: python packrat.py <config.ini>")
+    config = ConfigParser()
+    config.read(argv[1])
+    try:
+        host = config['packrat'].get('host', '0.0.0.0')
+        port = config['packrat'].get('port', '5000')
+        debug = config['packrat'].getboolean('debug', True)
+    except KeyError:
+        print("Invalid or non-existent config file: " + argv[1])
+        raise
+    app.run(host=host, port=int(port), debug=debug)

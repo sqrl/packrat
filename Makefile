@@ -5,10 +5,6 @@ PYVENV ?= pyvenv
 # Whether to use wheels
 USE_WHEEL := --no-use-wheel
 
-# The endpoint to serve web requests on
-WEB_HOST := 0.0.0.0
-WEB_PORT := 5000
-
 #
 # Rules
 #
@@ -22,6 +18,4 @@ ve: etc/requirements.txt
 	touch $@
 
 run: ve
-	WEB_HOST=$(WEB_HOST) \
-		WEB_PORT=$(WEB_PORT) \
-		ve/bin/python packrat/packrat.py
+	ve/bin/python packrat/packrat.py etc/packrat.ini

@@ -31,7 +31,7 @@ is a a web API for packrat.
  json document whose 'success' field will be true if successful.  If
  unsuccessful, the 'error' and 'message' fields contain more information.
 
-A Python example of uploading a picture `cat.png` using the key `cat`
+A Python example of uploading a picture `cat.png` with the key `cat`
 using the  [requests library](http://docs.python-requests.org/) looks
 like this:
 
@@ -49,7 +49,6 @@ hasn't been cache evicted yet) by issuing a `GET` for
 Outstanding Issues
 ==================
 
- * `packrat.ini` is presently ignored.
  * Caching policy is currently LRU. Some optimizations could be made
  by discarding slightly younger but larger files.
  * Caching is currently in memory.
