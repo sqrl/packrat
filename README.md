@@ -25,10 +25,10 @@ is a a web API for packrat.
  * `GET http://127.0.0.1:5000/<key>` Retrieves a previously uploaded file.
  The file will be sent as a `Content-Disposition: attachment` and a file
  name with which it was uploaded.
- * `POST http://127.0.0.1:5000/<key>` Attempts to post a file.  The file
- should be sent with a `enctype` of `multipart/form-data` and the file
- should be included as `form-data` with name `file`.  It will return a
- json document whose 'success' field will be true if successful.  If
+ * `POST http://127.0.0.1:5000/<key>` Attempts to post a file.  The
+ request must be sent with a `enctype` of `multipart/form-data` and the
+ file must be included as `form-data` with name `file`.  It will return
+ a json document whose 'success' field will be true if successful.  If
  unsuccessful, the 'error' and 'message' fields contain more information.
 
 A Python example of uploading a picture `cat.png` with the key `cat`
