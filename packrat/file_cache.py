@@ -243,7 +243,7 @@ class FileCache(object):
 
     def get_file(self, key):
         """
-        Retrieves a file stored under a key.
+        Retrieves a file stored  under a key.
 
         Args:
             key (string): The key to look up.
