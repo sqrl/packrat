@@ -5,7 +5,8 @@ from sys import argv, exit
 
 from flask import abort, Flask, render_template, request, send_file
 
-from memorycache import MemoryCache
+from memory_cache import MemoryCache
+from file_cache import FileCache
 
 app = Flask(__name__)
 cache = MemoryCache()
@@ -50,4 +51,5 @@ if __name__ == '__main__':
     except KeyError:
         print("Invalid or non-existent config file: " + argv[1])
         raise
-    app.run(host=host, port=int(port), debug=debug)
+    cache = FileCache()
+    app.run(host=host, port=int(port), debug=debug, use_reloader=False)
