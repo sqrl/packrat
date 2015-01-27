@@ -5,11 +5,12 @@ from sys import argv, exit
 
 from flask import abort, Flask, render_template, request, send_file
 
-from memory_cache import MemoryCache
 from file_cache import FileCache
+from memory_cache import MemoryCache
+
 
 app = Flask(__name__)
-cache = MemoryCache()
+
 
 @app.route('/<key>', methods=['GET', 'POST'])
 def set_or_get(key=None):

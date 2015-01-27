@@ -1,23 +1,23 @@
-import shelve
-from flask import jsonify
 from time import time
 
-from utils.ordered_set import OrderedSet
+from flask import jsonify
+import shelve
+
+from utils.cache_codes import CacheCodes
 from utils.file_metadata import FileMetadata
-from utils.file_backend import FileBackend
-from utils.cache_enums import CacheEnums as Enums
+from utils.ordered_set import OrderedSet
+from utils.supported_backends import SupportedBackends, BackendTypes
+
 
 DEFAULT_CACHE_SIZE = 10 * 1024 * 1024
 DEFAULT_DB_PATH = '/tmp/database.db'
 
 # TODO major design concerns:
 # - Concurrency issues around read/write
-# - Does it make sense to always keep the database open? My understanding is that packrat will
-#   control all database access, so it could just keep it open always. But this may not make sense.
 # - Is there a use case where we would want multiple databases? This would be an easy extension
 # - Research correct errors to throw in each case. Decide between errors in this module vs.
 #   returning error json
-# - Add logic to open already existing database and read the number of files stored there?
+# - If the database already exists, how to we decide what lives in it?
 
 
 class FileCache(object):
@@ -26,20 +26,21 @@ class FileCache(object):
     """
     def __init__(self, max_size=DEFAULT_CACHE_SIZE, database_path=DEFAULT_DB_PATH):
         """
-        Initializes the cache. Opens a new database for the metadata cache at the supplied
-        database_path. If there isn't a database at the provided location, a new one will be
-        created.
+        Initializes the cache. Opens an existing database for the metadata cache if one exists
+        at the supplied database_path. If there isn't an existing database at the provided
+        location, a new one will be created.
 
         Args:
-            max_size (int): The maximum content to store in the cache.
-            database_path (string): Location of the database to open.
+            max_size (int): The maximum content to store in the cache. Default size is
+                10 * 1024 * 1024 bytes.
+            database_path (string): Location of the database to open. Default location is
+                /tmp/database.db
         """
         self.max_size = max_size
-        self.dbInitialized = False
         self.db = shelve.open(database_path)
         self.ordered_items = OrderedSet()
         self.total_content = 0
-        self.files = FileBackend()
+        self.files = SupportedBackends.init_cache(backend=BackendTypes.FILESYSTEM_CACHE)
 
     def _clear(self, target=0):
         """
@@ -49,17 +50,20 @@ class FileCache(object):
             target (int): The target size.
 
         Returns:
-            TODO: Consider possible errors to throw
+            FAILED_TO_CLEAR_CACHE if any errors arise removing values from the backend cache.
+            CLEARED_CACHE if the cache is successfully cleared.
         """
         while self.total_content > target:
             # First clear the key out of our metadata cache
             key = self.ordered_items.pop()
-            metadata = self.db[key]
-            self.total_content -= metadata.getFileSize()
-            # Next, clear it out of the filesystem cache
-            if self.files.remove_file(key) == Enums.INVALID_KEY:
-                return Enums.FAILED_TO_CLEAR_CACHE
-        return Enums.CLEARED_CACHE
+            metadata = self.db[key]  # Add error check here?
+            del self.db[key]
+            self.total_content -= metadata.file_size
+            # Next, clear it out of the filesystem cache. If we fail here, break and return.
+            if self.files.remove_file(key) == CacheCodes.INVALID_KEY:
+                return CacheCodes.FAILED_TO_CLEAR_CACHE
+        # If we cleared successfully, return a success message.
+        return CacheCodes.CLEARED_CACHE
 
     def _compute_file_size(self, value):
         """
@@ -104,42 +108,34 @@ class FileCache(object):
 
         Args:
             key (string): The key to be stored.
-            value (type TODO): They file to be stored.
+            value (type TODO): The file to be stored.
 
         Returns:
-
+            FILE_TOO_LARGE if the file is bigger than the max cache size.
+            FAILED_TO_CLEAR_CACHE if there is a failure clearing out old files to make room for
+                the new one.
+            CACHE_ADD_FAILURE if there is an error adding the file to the backend.
+            FAILED_TO_ADD_METADATA if there is an error adding new metadata.
+            FAILED_TO_UPDATE_METADATA if there is an error updating pre-existing metadata.
+            UPDATED_METADATA_SUCCESSFULLY if the metadata is successfully updated.
+            ADDED_METADATA_SUCCESSFULLY if th metadata is successfully added.
         """
         file_size = self._compute_file_size(value)
         file_name = self._compute_file_name(value)
 
-        # Attempt to store the file metadata.
-        (store_result, old_metadata) = self._store_file_metadata(key, file_size, file_name)
-        # Clear the cache using a LRU heuristic.
-        if self._clear(self.max_size) == Enums.FAILED_TO_CLEAR_CACHE:
-            return Enums.FAILED_TO_CLEAR_CACHE
+        # Check to make sure the file will fit in the cache.
+        if file_size > self.max_size:
+            return CacheCodes.FILE_TOO_LARGE
 
-        # If we are successful storing the metadata, add it to the backend filesystem cache.
-        if (store_result == Enums.UPDATED_KEY_SUCCESSFULLY or
-                store_result == Enums.ADDED_KEY_SUCCESSFULLY):
-            cache_add_result = self.files.add_file(key, value)
-            # If the file is successfully added to the backend, move key to the front of the cache.
-            if cache_add_result == Enums.ADDED_TO_CACHE:
-                if key in self.ordered_items:
-                    self.ordered_items.move_to_front(key)
-                else:
-                    self.ordered_items.add(key)
-                return cache_add_result
-            # Otherwise, we return with a failure message and reset to old metadata.
-            # TODO: This might not be right, consider case where old data is lost in backend.
-            elif cache_add_result == Enums.CACHE_ADD_FAILURE:
-                self.db[key] = old_metadata
-                return cache_add_result
-        # If we are unsuccessful storing the metadata, return the reason for failure.
-        elif (store_result == Enums.FILE_TOO_LARGE or
-              store_result == Enums.FAILED_TO_ADD_METADATA):
-            return store_result
-        else:
-            return Enums.UNEXPECTED_CODE_PATH
+        # First attempt to clear out the cache LRU style to make room for the new file
+        self.total_content += file_size
+        if self._clear(self.max_size) == CacheCodes.FAILED_TO_CLEAR_CACHE:
+            return CacheCodes.FAILED_TO_CLEAR_CACHE
+        # Next, attempt to add the file to the backend storage.
+        if self.files.add_file(key, value) == CacheCodes.CACHE_ADD_FAILURE:
+            return CacheCodes.CACHE_ADD_FAILURE
+        # Now we attempt to add the key metadata
+        return self._store_file_metadata(key, file_size, file_name)
 
     def _store_file_metadata(self, key, file_size, file_name):
         """
@@ -149,39 +145,44 @@ class FileCache(object):
             - file name
             - last access time
 
+        TODO: Look up more specific errors that may be thrown here.
+
         Args:
             key (string): A key to store the metadata under.
             fileSize (type TODO): The size of the file.
             fileName (string): The name of the file to store.
 
         Returns:
-            Tuples of (success message, optional data)
-            (FILE_TOO_LARGE, None) if the file is too large
-            (UPDATED_KEY_SUCCESSFULLY, old file metadata) if the key was already in the cache. The
-                old metadata is returned in case the backend add fails and we want to roll back
-                to the old key value.
-            (ADDED_KEY_SUCCESSFULLY, None) if the key was not in the cache.
+            FAILED_TO_UPDATE_METADATA if existing metadata is not successfully updated.
+            UPDATED_METADATA_SUCCESSFULLY if existing metadata is successfully updated.
+            FAILED_TO_ADD_METADATA if there is an error adding new metadata.
+            ADDED_METADATA_SUCCESSFULLY if new metadata is successfully added.
         """
-        if file_size > self.max_size:
-            return Enums.FILE_TOO_LARGE, None
-
         current_time = time() * 1000
 
         # If the key is already in the cache, we update it with new metadata
         if key in self.ordered_items:
-            old_metadata = metadata = self.db[key]
-            self.total_content -= metadata.getFileSize()
-            self.total_content += file_size
-            metadata.updateFileSize(file_size)
-            metadata.updateAccessTime(current_time)
-            self.db[key] = metadata
-            return Enums.UPDATED_KEY_SUCCESSFULLY, old_metadata
+            try:
+                metadata = self.db[key]
+                self.total_content -= metadata.file_size
+                self.total_content += file_size
+                metadata.file_size = file_size
+                self.ordered_items.move_to_front(key)
+                metadata.last_access_time = current_time
+                self.db[key] = metadata
+            except OSError:
+                return CacheCodes.FAILED_TO_UPDATE_METADATA
+            return CacheCodes.UPDATED_METADATA_SUCCESSFULLY
         # If the key was not in the cache, we add it and its metadata
         else:
-            metadata = FileMetadata(file_size, current_time, file_name)
-            self.db[key] = metadata
-            self.total_content += file_size
-            return Enums.ADDED_KEY_SUCCESSFULLY, None
+            try:
+                metadata = FileMetadata(file_size, current_time, file_name)
+                self.db[key] = metadata
+                self.ordered_items.add(key)
+                self.total_content += file_size
+            except OSError:
+                return CacheCodes.FAILED_TO_ADD_METADATA
+            return CacheCodes.ADDED_METADATA_SUCCESSFULLY
 
     def store_file(self, key, value):
         """
@@ -204,31 +205,38 @@ class FileCache(object):
             })
 
         store_result = self._store_file(key, value)
-        if store_result == Enums.FILE_TOO_LARGE:
+        if store_result == CacheCodes.FILE_TOO_LARGE:
             return jsonify({
                 'success': False,
                 'error': 413,
                 'message': "File too large."
             })
-        elif store_result == Enums.CACHE_ADD_FAILURE:
-            return jsonify({
-                'success': False,
-                'error': 413,
-                'message': "Failed to add to filesystem cache."
-            })
-        elif store_result == Enums.FAILED_TO_ADD_METADATA:
-            return jsonify({
-                'success': False,
-                'error': 413,
-                'message': "Failed to add cache metadata."
-            })
-        elif store_result == Enums.FAILED_TO_CLEAR_CACHE:
+        elif store_result == CacheCodes.FAILED_TO_CLEAR_CACHE:
             return jsonify({
                 'success': False,
                 'error': 413,
                 'message': "Failed to clear cache."
             })
-        elif store_result == Enums.ADDED_TO_CACHE:
+        elif store_result == CacheCodes.CACHE_ADD_FAILURE:
+            return jsonify({
+                'success': False,
+                'error': 413,
+                'message': "Failed to add to filesystem cache."
+            })
+        elif store_result == CacheCodes.FAILED_TO_ADD_METADATA:
+            return jsonify({
+                'success': False,
+                'error': 413,
+                'message': "Failed to add cache metadata."
+            })
+        elif store_result == CacheCodes.FAILED_TO_UPDATE_METADATA:
+            return jsonify({
+                'success': False,
+                'error': 413,
+                'message': "Failed to add cache metadata."
+            })
+        elif (store_result == CacheCodes.ADDED_METADATA_SUCCESSFULLY or
+              store_result == CacheCodes.UPDATED_METADATA_SUCCESSFULLY):
             return jsonify({
                 'success': True,
                 'message': ("Uploaded under %s. %d bytes remain."
@@ -257,7 +265,7 @@ class FileCache(object):
         self.ordered_items.move_to_front(key)
         metadata = self.db[key]
         data = self.files.get_file(key)
-        return metadata.getFileName(), data
+        return metadata.file_name, data
 
     def status(self):
         """
