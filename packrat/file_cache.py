@@ -6,7 +6,8 @@ import shelve
 from utils.cache_codes import CacheCodes
 from utils.file_metadata import FileMetadata
 from utils.ordered_set import OrderedSet
-from utils.supported_backends import SupportedBackends, BackendTypes
+from utils.supported_backends import SupportedBackends
+from utils.backend_names import BackendNames
 
 
 DEFAULT_CACHE_SIZE = 10 * 1024 * 1024
@@ -17,7 +18,8 @@ DEFAULT_DB_PATH = '/tmp/database.db'
 # - Is there a use case where we would want multiple databases? This would be an easy extension
 # - Research correct errors to throw in each case. Decide between errors in this module vs.
 #   returning error json
-# - If the database already exists, how to we decide what lives in it?
+# - If the database already exists, how to we decide what lives in it? This seems to be a valid
+#   issue, not quite sure how to resolve it.
 
 
 class FileCache(object):
@@ -40,7 +42,7 @@ class FileCache(object):
         self.db = shelve.open(database_path)
         self.ordered_items = OrderedSet()
         self.total_content = 0
-        self.files = SupportedBackends.init_cache(backend=BackendTypes.FILESYSTEM_CACHE)
+        self.files = SupportedBackends.init_cache(backend=BackendNames.FILESYSTEM_CACHE)
 
     def _clear(self, target=0):
         """

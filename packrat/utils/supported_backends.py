@@ -1,6 +1,7 @@
 from enum import Enum
 
-from utils.FilesystemCache import FilesystemCache
+from utils.filesystem_cache import FilesystemCache
+from utils.backend_names import BackendNames
 
 
 DEFAULT_LOCATION = '/tmp/packrat'
@@ -12,23 +13,15 @@ class SupportedBackends():
     backend, you must add support for a new init method here.
     """
     @staticmethod
-    def init_cache(backend=BackendTypes.FILESYSTEM_CACHE, cache_location=DEFAULT_LOCATION):
-        if backend == BackendTypes.FILESYSTEM_CACHE:
-            return self._init_filesystem_cache(cache_location)
+    def init_cache(backend=BackendNames.FILESYSTEM_CACHE, cache_location=DEFAULT_LOCATION):
+        if backend == BackendNames.FILESYSTEM_CACHE:
+            return SupportedBackends._init_filesystem_cache(cache_location)
         else:
             raise UnsupportedBackendError("Unsupported backend: %s" % backend)
 
     @staticmethod
     def _init_filesystem_cache(cache_location):
         return FilesystemCache(cache_location)
-
-
-class BackendTypes(Enum):
-    """
-    The types of backends supported by packrat. If you want to add support for a new backend, the
-    name here must match the backend class name.
-    """
-    FILESYSTEM_CACHE = 1
 
 
 class UnsupportedBackendError(Exception):
