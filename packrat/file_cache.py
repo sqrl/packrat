@@ -1,7 +1,7 @@
+import shelve
 from time import time
 
 from flask import jsonify
-import shelve
 
 from utils.cache_codes import CacheCodes
 from utils.file_metadata import FileMetadata

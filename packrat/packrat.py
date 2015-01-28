@@ -1,12 +1,10 @@
 from configparser import ConfigParser
 from io import BytesIO
-from os import getenv
 from sys import argv, exit
 
 from flask import abort, Flask, render_template, request, send_file
 
 from file_cache import FileCache
-from memory_cache import MemoryCache
 
 
 app = Flask(__name__)
