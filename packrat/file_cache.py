@@ -1,25 +1,34 @@
+import atexit
+import collections.namedtuple
+import os
 import shelve
-from time import time
 
 from flask import jsonify
 
 from utils.cache_codes import CacheCodes
-from utils.file_metadata import FileMetadata
-from utils.ordered_set import OrderedSet
-from utils.supported_backends import SupportedBackends
-from utils.backend_names import BackendNames
 
 
 DEFAULT_CACHE_SIZE = 10 * 1024 * 1024
-DEFAULT_DB_PATH = '/tmp/database.db'
+""" The default cache max-size. """
+
+DEFAULT_DB_PATH = '/tmp/packrat-storage'
+""" The default location to store uploaded files and their metadata. """
+
+_SHELVE_FILENAME = "packrat-md.shelve" # Name of file under the storage path that holds metadata.
+_SHELVE_CACHE_KEY = "lru_cache" # Key used to store our LRU cache metadata in our shelve file.
+_DB_SUBDIRECTORY = # The name of the subdirectory where actual files are stored, named after their keys.
 
 # TODO major design concerns:
-# - Concurrency issues around read/write
-# - Is there a use case where we would want multiple databases? This would be an easy extension
+# - Concurrency issues around read/write. (We can solve these maybe with gevent.)
+# - Is there a use case where we would want multiple databases? This would be an easy extension.
+#   (Probably not?)
 # - Research correct errors to throw in each case. Decide between errors in this module vs.
-#   returning error json
-# - If the database already exists, how to we decide what lives in it? This seems to be a valid
-#   issue, not quite sure how to resolve it.
+#   returning error json. (We should have json errors in a separate file.)
+# - If the databa[se already exists, how to we decide what lives in it? This seems to be a valid
+#   issue, not quite sure how to resolve it. (We should have a separate execution mode for what
+#   is effectively fsck).
+
+_FileMetadata = collections.namedtuple('_FileMetaData', ['key', 'filename', 'size'])
 
 
 class FileCache(object):
@@ -36,164 +45,124 @@ class FileCache(object):
             max_size (int): The maximum content to store in the cache. Default size is
                 10 * 1024 * 1024 bytes.
             database_path (string): Location of the database to open. Default location is
-                /tmp/database.db
+                /tmp/packrat-storage.
         """
         self.max_size = max_size
-        self.db = shelve.open(database_path)
-        self.ordered_items = OrderedSet()
+        os.makedirs(database_path, exist_ok=True)
+        self.database_path = database_path
+        self.db = shelve.open(os.path.join(database_path, _SHELVE_FILENAME))
+        self.ordered_items = self.db.get(_SHELVE_CACHE_KEY, [])
         self.total_content = 0
-        self.files = SupportedBackends.init_cache(backend=BackendNames.FILESYSTEM_CACHE)
+        for entry in self.ordered_items:
+            self.total_content += entry.size
+        atexit.register(self._close_db())
 
-    def _clear(self, target=0):
+    def _close_db(self):
         """
-        Removes elements from the cache in LRU fashion until the total size is no more than target.
-
-        Args:
-            target (int): The target size.
+        Closes the shelve db. Designed to be used as a shutdown hook and should not be called
+        directly.
 
         Returns:
-            FAILED_TO_CLEAR_CACHE if any errors arise removing values from the backend cache.
-            CLEARED_CACHE if the cache is successfully cleared.
+            None
         """
-        while self.total_content > target:
-            # First clear the key out of our metadata cache
-            key = self.ordered_items.pop()
-            metadata = self.db[key]  # Add error check here?
-            del self.db[key]
-            self.total_content -= metadata.file_size
-            # Next, clear it out of the filesystem cache. If we fail here, break and return.
-            if self.files.remove_file(key) == CacheCodes.INVALID_KEY:
-                return CacheCodes.FAILED_TO_CLEAR_CACHE
-        # If we cleared successfully, return a success message.
-        return CacheCodes.CLEARED_CACHE
+        self.db.close()
 
-    def _compute_file_size(self, value):
+
+    def _save_metadata(self):
         """
-        Computes the size of a file.
-        TODO: Implement this. Dependent on deciding what sort of structure the file will be
-            passed in with.
-
-        Args:
-            file (type TODO): The file to cache.
+        Saves the metadata into the shelve file. Until this call completes, changes to the
+        metadata list will not be persisted.
 
         Returns:
-            (type TODO)The size of the file
+            None
         """
-        return 1
+        self.db[_SHELVE_CACHE_KEY] = self.ordered_items
 
-    def _compute_file_name(self, value):
+    def _filename_for_key(self, key):
         """
-        Computes the name of a file.
-        TODO: Not quite sure what the file name will be used for, or how it will be computed
-            and passed in. The main use case I see is for external use. The hope for now is that
-            the name can be recovered from the value or key, otherwise the API in memorycache will
-            have to be modified for consistency as well.
+        Given a file key, returns the filename (including path) for where that key
+        should be on disk.
 
         Args:
-            value (FileType TODO): The file itself.
+            key (str): The key as a string.
 
         Returns:
-            (string) The name of the file.
+            (string) The filename including path (possibly relative) if `database_path`
+                was relative.
         """
-        return "not a real name"
+        return os.path.join(self.database_path, _DB_SUBDIRECTORY, key)
 
-    def _store_file(self, key, value):
+    def _add_file(self, key, file):
         """
         Main function used internally for storing the file. There are two main operations being
         performed here:
-            1. Storing the file metadata in a lightweight database managed by the shelve module.
-                This metadata is stored with the shelve module, which exposes a dict-like API. The
-                keys are also kept in an ordered set that maintains the order of key addition
-                for LRU style removal while providing O(1) key lookup.
-            2. If storing the file metadata is successful, it will be added to the backend
-                filesystem cache.
+            1. Storing the file data on the backend filesystem cache.
+            2. Storing the file metadata in a lightweight database managed by the shelve module.
 
         Args:
             key (string): The key to be stored.
-            value (type TODO): The file to be stored.
+            file (FileStorage): A Flask FileStorage object to be saved.
 
         Returns:
-            FILE_TOO_LARGE if the file is bigger than the max cache size.
             FAILED_TO_CLEAR_CACHE if there is a failure clearing out old files to make room for
                 the new one.
             CACHE_ADD_FAILURE if there is an error adding the file to the backend.
             FAILED_TO_ADD_METADATA if there is an error adding new metadata.
             FAILED_TO_UPDATE_METADATA if there is an error updating pre-existing metadata.
             UPDATED_METADATA_SUCCESSFULLY if the metadata is successfully updated.
-            ADDED_METADATA_SUCCESSFULLY if th metadata is successfully added.
+            ADDED_METADATA_SUCCESSFULLY if the metadata is successfully added.
         """
-        file_size = self._compute_file_size(value)
-        file_name = self._compute_file_name(value)
-
-        # Check to make sure the file will fit in the cache.
-        if file_size > self.max_size:
-            return CacheCodes.FILE_TOO_LARGE
-
-        # First attempt to clear out the cache LRU style to make room for the new file
-        self.total_content += file_size
-        if self._clear(self.max_size) == CacheCodes.FAILED_TO_CLEAR_CACHE:
-            return CacheCodes.FAILED_TO_CLEAR_CACHE
-        # Next, attempt to add the file to the backend storage.
-        if self.files.add_file(key, value) == CacheCodes.CACHE_ADD_FAILURE:
-            return CacheCodes.CACHE_ADD_FAILURE
-        # Now we attempt to add the key metadata
-        return self._store_file_metadata(key, file_size, file_name)
-
-    def _store_file_metadata(self, key, file_size, file_name):
-        """
-        Stores metadata associated with a key including:
-            - file size
-            - creation time
-            - file name
-            - last access time
-
-        TODO: Look up more specific errors that may be thrown here.
-
-        Args:
-            key (string): A key to store the metadata under.
-            fileSize (type TODO): The size of the file.
-            fileName (string): The name of the file to store.
-
-        Returns:
-            FAILED_TO_UPDATE_METADATA if existing metadata is not successfully updated.
-            UPDATED_METADATA_SUCCESSFULLY if existing metadata is successfully updated.
-            FAILED_TO_ADD_METADATA if there is an error adding new metadata.
-            ADDED_METADATA_SUCCESSFULLY if new metadata is successfully added.
-        """
-        current_time = time() * 1000
-
-        # If the key is already in the cache, we update it with new metadata
+        was_update = False
+        # Check to see if we're replacing an existing file. If so, make it unreachable for now.
+        # TODO: Consider keeping the older file entry until the copy finishes with a temporary
+        # file and a copy command.
         if key in self.ordered_items:
-            try:
-                metadata = self.db[key]
-                self.total_content -= metadata.file_size
-                self.total_content += file_size
-                metadata.file_size = file_size
-                self.ordered_items.move_to_front(key)
-                metadata.last_access_time = current_time
-                self.db[key] = metadata
-            except OSError:
-                return CacheCodes.FAILED_TO_UPDATE_METADATA
-            return CacheCodes.UPDATED_METADATA_SUCCESSFULLY
-        # If the key was not in the cache, we add it and its metadata
-        else:
-            try:
-                metadata = FileMetadata(file_size, current_time, file_name)
-                self.db[key] = metadata
-                self.ordered_items.add(key)
-                self.total_content += file_size
-            except OSError:
-                return CacheCodes.FAILED_TO_ADD_METADATA
-            return CacheCodes.ADDED_METADATA_SUCCESSFULLY
+            self.ordered_items.remove(key)
+            self._save_metadata()
+            was_update = True
 
-    def store_file(self, key, value):
+        # Save the file to disk. This may take a while so concurrency here is important.
+        storage_filename = self._filename_for_key(key)
+        file.save(storage_filename)
+
+        client_filename = file.filename # Filename as provided by client.
+        size = os.path.getsize(storage_filename)
+        metadata = _FileMetadata(key, client_filename, size)
+
+        # Make a list of candidate files to remove from the system.
+        to_remove = []
+        while self.total_content + size > self.max_size:
+            oldest = self.ordered_items.pop(0)
+            self.total_content -= oldest.size
+            to_remove.append(oldest)
+
+        # Add new metadata to the cache and save the result. This may block and result in a
+        # context switch under gevent. At this point the new file is visible and the old
+        # ones are not, but we still have to delete the files.
+        self.ordered_items.append(metadata)
+        self.total_content += size
+        self._save_metadata()
+
+        # Now remove the evicted files.
+        for file in to_remove:
+            # Make sure the file hasn't been added back. This will be important with
+            # concurrency: If someone re-uploaded the file, we don't want to delete it.
+            if file.key in self.ordered_items:
+                continue
+            os.remove(self._filename_for_key(file.key))
+
+        if was_update:
+            return CacheCodes.UPDATED_METADATA_SUCCESSFULLY
+        return CacheCodes.ADDED_METADATA_SUCCESSFULLY
+
+    def store_file(self, key, file):
         """
         Attempts to add a file to the cache.
 
         Args:
             key (string): The key to store the file under. Will replace any existing
                 file stored under this key.
-            file: TODO determine how file is handled
+            file (FileStorage): A Flask FileStorage object to be saved.
 
         Returns:
             A json record indicating success or failure (if an error occurred or the
@@ -206,7 +175,7 @@ class FileCache(object):
                 'message': "Unexpected invalid key."
             })
 
-        store_result = self._store_file(key, value)
+        store_result = self._store_file(key, file)
         if store_result == CacheCodes.FILE_TOO_LARGE:
             return jsonify({
                 'success': False,
@@ -248,7 +217,7 @@ class FileCache(object):
             return jsonify({
                 'success': False,
                 'error': 500,
-                'message': "Unexpected path."
+                'message': "Unexpected server error."
             })
 
     def get_file(self, key):
@@ -259,14 +228,15 @@ class FileCache(object):
             key (string): The key to look up.
 
         Returns:
-            A tuple with the filename and the contents of the file as a string
-            or None if it's not found.
+            A tuple with the filename on disk and filename to return to the client.
         """
         if key not in self.ordered_items:
             return None
         self.ordered_items.move_to_front(key)
         metadata = self.db[key]
-        data = self.files.get_file(key)
+        data = self.files.get_filename(key)
+        if not data:
+
         return metadata.file_name, data
 
     def status(self):

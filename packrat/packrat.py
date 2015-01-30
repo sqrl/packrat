@@ -44,11 +44,14 @@ if __name__ == '__main__':
     config = ConfigParser()
     config.read(argv[1])
     try:
-        host = config['packrat'].get('host', '0.0.0.0')
-        port = config['packrat'].get('port', '5000')
+        host = config['packrat'].get('host')
+        port = config['packrat'].get('port')
         debug = config['packrat'].getboolean('debug', True)
+        cache_max_size = config['packrat'].getint('cache_size')
+        cache_path = config['packrat'].get('storage_location')
+        app.config['MAX_CONTENT_LENGTH'] = cache_max_size
     except KeyError:
         print("Invalid or non-existent config file: " + argv[1])
         raise
-    cache = FileCache()
+    cache = FileCache(cache_max_size, cache_path)
     app.run(host=host, port=int(port), debug=debug, use_reloader=False)
