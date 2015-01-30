@@ -4,6 +4,7 @@
 __pycache__
 /version.txt
 .idea
+*.iml
 
 # os crud #
 .DS_Store
