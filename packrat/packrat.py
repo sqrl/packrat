@@ -1,5 +1,4 @@
 from configparser import ConfigParser
-from io import BytesIO
 from sys import argv, exit
 
 from flask import abort, Flask, render_template, request, send_file
@@ -25,7 +24,7 @@ def set_or_get(key=None):
     file = cache.get_file(key)
     if not file:
         abort(404)
-    return send_file(BytesIO(file[1]), as_attachment=True, attachment_filename=file[0])
+    return send_file(file[0], as_attachment=True, attachment_filename=file[1])
 
 
 @app.route('/')
