@@ -1,4 +1,5 @@
 import atexit
+import collections.OrderedDict
 import collections.namedtuple
 import os
 import shelve
@@ -51,10 +52,10 @@ class FileCache(object):
         os.makedirs(database_path, exist_ok=True)
         self.database_path = database_path
         self.db = shelve.open(os.path.join(database_path, _SHELVE_FILENAME))
-        self.ordered_items = self.db.get(_SHELVE_CACHE_KEY, [])
+        self.ordered_items = self.db.get(_SHELVE_CACHE_KEY, collections.OrderedDict())
         self.total_content = 0
         for entry in self.ordered_items:
-            self.total_content += entry.size
+            self.total_content += self.ordered_items[entry].size
         atexit.register(self._close_db())
 
     def _close_db(self):
@@ -132,24 +133,24 @@ class FileCache(object):
         # Make a list of candidate files to remove from the system.
         to_remove = []
         while self.total_content + size > self.max_size:
-            oldest = self.ordered_items.pop(0)
+            (old_key, oldest) = self.ordered_items.popitem()
             self.total_content -= oldest.size
-            to_remove.append(oldest)
+            to_remove.append(old_key)
 
         # Add new metadata to the cache and save the result. This may block and result in a
         # context switch under gevent. At this point the new file is visible and the old
         # ones are not, but we still have to delete the files.
-        self.ordered_items.append(metadata)
+        self.ordered_items[key] = metadata
         self.total_content += size
         self._save_metadata()
 
         # Now remove the evicted files.
-        for file in to_remove:
+        for old_key in to_remove:
             # Make sure the file hasn't been added back. This will be important with
             # concurrency: If someone re-uploaded the file, we don't want to delete it.
-            if file.key in self.ordered_items:
+            if old_key in self.ordered_items:
                 continue
-            os.remove(self._filename_for_key(file.key))
+            os.remove(self._filename_for_key(old_key))
 
         if was_update:
             return CacheCodes.UPDATED_METADATA_SUCCESSFULLY
@@ -232,12 +233,11 @@ class FileCache(object):
         """
         if key not in self.ordered_items:
             return None
-        self.ordered_items.move_to_front(key)
-        metadata = self.db[key]
-        data = self.files.get_filename(key)
-        if not data:
+        self.ordered_items.move_to_end(key)
+        self._save_metadata()
+        metadata = self.ordered_items[key]
 
-        return metadata.file_name, data
+        return self._filename_for_key(metadata.key), metadata.filename
 
     def status(self):
         """
