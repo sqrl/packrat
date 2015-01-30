@@ -17,7 +17,7 @@ DEFAULT_DB_PATH = '/tmp/packrat-storage'
 
 _SHELVE_FILENAME = "packrat-md.shelve" # Name of file under the storage path that holds metadata.
 _SHELVE_CACHE_KEY = "lru_cache" # Key used to store our LRU cache metadata in our shelve file.
-_DB_SUBDIRECTORY = # The name of the subdirectory where actual files are stored, named after their keys.
+_DB_SUBDIRECTORY = "files" # The name of the subdirectory where actual files are stored, named after their keys.
 
 # TODO major design concerns:
 # - Concurrency issues around read/write. (We can solve these maybe with gevent.)
