@@ -1,6 +1,5 @@
 import atexit
-import collections.OrderedDict
-import collections.namedtuple
+from collections import namedtuple, OrderedDict
 import os
 import shelve
 
@@ -29,7 +28,7 @@ _DB_SUBDIRECTORY = "files" # The name of the subdirectory where actual files are
 #   issue, not quite sure how to resolve it. (We should have a separate execution mode for what
 #   is effectively fsck).
 
-_FileMetadata = collections.namedtuple('_FileMetaData', ['key', 'filename', 'size'])
+_FileMetadata = namedtuple('_FileMetadata', ['key', 'filename', 'size'])
 
 
 class FileCache(object):
@@ -49,14 +48,14 @@ class FileCache(object):
                 /tmp/packrat-storage.
         """
         self.max_size = max_size
-        os.makedirs(database_path, exist_ok=True)
+        os.makedirs(os.path.join(database_path, _DB_SUBDIRECTORY), exist_ok=True)
         self.database_path = database_path
         self.db = shelve.open(os.path.join(database_path, _SHELVE_FILENAME))
-        self.ordered_items = self.db.get(_SHELVE_CACHE_KEY, collections.OrderedDict())
+        self.ordered_items = self.db.get(_SHELVE_CACHE_KEY, OrderedDict())
         self.total_content = 0
         for entry in self.ordered_items:
             self.total_content += self.ordered_items[entry].size
-        atexit.register(self._close_db())
+        atexit.register(self._close_db)
 
     def _close_db(self):
         """
@@ -176,7 +175,7 @@ class FileCache(object):
                 'message': "Unexpected invalid key."
             })
 
-        store_result = self._store_file(key, file)
+        store_result = self._add_file(key, file)
         if store_result == CacheCodes.FILE_TOO_LARGE:
             return jsonify({
                 'success': False,

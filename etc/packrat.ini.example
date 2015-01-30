@@ -10,4 +10,5 @@ storage_location = storage
 
 # Max total size of everything stored in the cache.
 # Temporary files may go over this value, so set it conservatively.
-cache_size = 104857600 # 100 MB
+# The default is 100 MB.
+cache_size = 104857600
