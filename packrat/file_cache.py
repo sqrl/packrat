@@ -132,7 +132,7 @@ class FileCache(object):
         # Make a list of candidate files to remove from the system.
         to_remove = []
         while self.total_content + size > self.max_size:
-            (old_key, oldest) = self.ordered_items.popitem()
+            (old_key, oldest) = self.ordered_items.popitem(last=False)
             self.total_content -= oldest.size
             to_remove.append(old_key)
 
