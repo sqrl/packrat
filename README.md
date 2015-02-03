@@ -17,15 +17,15 @@ dependencies and start the server.
 Web API
 =======
 
-Assuming that packrat is running on http://127.0.0.1:5000, the following
+Assuming that packrat is running on http://127.0.0.1:5050, the following
 is a a web API for packrat.
 
- * `GET http://127.0.0.1:5000/` Shows a status page and a web interface
+ * `GET http://127.0.0.1:5050/` Shows a status page and a web interface
  for uploading a file.
- * `GET http://127.0.0.1:5000/<key>` Retrieves a previously uploaded file.
+ * `GET http://127.0.0.1:5050/<key>` Retrieves a previously uploaded file.
  The file will be sent as a `Content-Disposition: attachment` and a file
  name with which it was uploaded.
- * `POST http://127.0.0.1:5000/<key>` Attempts to post a file.  The
+ * `POST http://127.0.0.1:5050/<key>` Attempts to post a file.  The
  request must be sent with a `enctype` of `multipart/form-data` and the
  file must be included as `form-data` with name `file`.  It will return
  a json document whose 'success' field will be true if successful.  If
@@ -35,7 +35,7 @@ A Python example of uploading a picture `cat.png` with the key `cat`
 using the  [requests library](http://docs.python-requests.org/) looks
 like this:
 
-    base_url = "http://127.0.0.1:5000/"
+    base_url = "http://127.0.0.1:5050/"
     with open("cat.png", 'rb') as file:
         key = 'cat'
         r = requests.post(base_url + key, files={'file': file})
@@ -43,7 +43,7 @@ like this:
 
 You can retrieve the file uploaded in the above example (assuming it
 hasn't been cache evicted yet) by issuing a `GET` for
-`http://127.0.0.1:5000/cat`
+`http://127.0.0.1:5050/cat`
 
 
 Outstanding Issues

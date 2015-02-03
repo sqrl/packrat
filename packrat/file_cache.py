@@ -117,7 +117,8 @@ class FileCache(object):
         # TODO: Consider keeping the older file entry until the copy finishes with a temporary
         # file and a copy command.
         if key in self.ordered_items:
-            self.ordered_items.remove(key)
+            self.total_content -= self.ordered_items[key].size
+            del self.ordered_items[key]
             self._save_metadata()
             was_update = True
 
