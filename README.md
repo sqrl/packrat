@@ -51,7 +51,6 @@ Outstanding Issues
 
  * Caching policy is currently LRU. Some optimizations could be made
  by discarding slightly younger but larger files.
- * Caching is currently in memory.
  * Files will first be stored in a single directory, which is not the
  most scalable solution.
  * Currently single threaded for easier concurrency logic.
