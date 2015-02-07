@@ -53,4 +53,4 @@ if __name__ == '__main__':
         print("Invalid or non-existent config file: " + argv[1])
         raise
     cache = FileCache(cache_max_size, cache_path)
-    app.run(host=host, port=int(port), debug=debug, use_reloader=False)
+    app.run(host=host, port=int(port), debug=debug, threaded=True, use_reloader=False)
