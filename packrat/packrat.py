@@ -18,7 +18,6 @@ def set_or_get(key=None):
     if not key:
         abort(400)
     if request.method == 'POST':
-        print(request.files['file'])
         return cache.store_file(key, request.files['file'])
 
     file = cache.get_file(key)
