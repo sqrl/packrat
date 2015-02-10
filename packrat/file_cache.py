@@ -5,7 +5,7 @@ import shelve
 
 from flask import jsonify
 
-from utils.cache_codes import CacheCodes
+import cache_codes
 
 
 DEFAULT_CACHE_SIZE = 10 * 1024 * 1024
@@ -153,8 +153,8 @@ class FileCache(object):
             os.remove(self._filename_for_key(old_key))
 
         if was_update:
-            return CacheCodes.UPDATED_METADATA_SUCCESSFULLY
-        return CacheCodes.ADDED_METADATA_SUCCESSFULLY
+            return cache_codes.CacheCodes.UPDATED_METADATA_SUCCESSFULLY
+        return cache_codes.CacheCodes.ADDED_METADATA_SUCCESSFULLY
 
     def store_file(self, key, file):
         """
@@ -171,55 +171,72 @@ class FileCache(object):
         """
         if not key:
             return jsonify({
-                'success': False,
-                'error': 500,
-                'message': "Unexpected invalid key."
+                "success": False,
+                "error": 500,
+                "message": "Unexpected invalid key."
             })
 
         store_result = self._add_file(key, file)
-        if store_result == CacheCodes.FILE_TOO_LARGE:
+        if store_result == cache_codes.CacheCodes.FILE_TOO_LARGE:
             return jsonify({
-                'success': False,
-                'error': 413,
-                'message': "File too large."
+                "success": False,
+                "error": 413,
+                "message": "File too large."
             })
-        elif store_result == CacheCodes.FAILED_TO_CLEAR_CACHE:
+        elif store_result == cache_codes.CacheCodes.FAILED_TO_CLEAR_CACHE:
             return jsonify({
-                'success': False,
-                'error': 413,
-                'message': "Failed to clear cache."
+                "success": False,
+                "error": 413,
+                "message": "Failed to clear cache."
             })
-        elif store_result == CacheCodes.CACHE_ADD_FAILURE:
+        elif store_result == cache_codes.CacheCodes.CACHE_ADD_FAILURE:
             return jsonify({
-                'success': False,
-                'error': 413,
-                'message': "Failed to add to filesystem cache."
+                "success": False,
+                "error": 413,
+                "message": "Failed to add to filesystem cache."
             })
-        elif store_result == CacheCodes.FAILED_TO_ADD_METADATA:
+        elif store_result == cache_codes.CacheCodes.FAILED_TO_ADD_METADATA:
             return jsonify({
-                'success': False,
-                'error': 413,
-                'message': "Failed to add cache metadata."
+                "success": False,
+                "error": 413,
+                "message": "Failed to add cache metadata."
             })
-        elif store_result == CacheCodes.FAILED_TO_UPDATE_METADATA:
+        elif store_result == cache_codes.CacheCodes.FAILED_TO_UPDATE_METADATA:
             return jsonify({
-                'success': False,
-                'error': 413,
-                'message': "Failed to add cache metadata."
+                "success": False,
+                "error": 413,
+                "message": "Failed to add cache metadata."
             })
-        elif (store_result == CacheCodes.ADDED_METADATA_SUCCESSFULLY or
-              store_result == CacheCodes.UPDATED_METADATA_SUCCESSFULLY):
+        elif (store_result == cache_codes.CacheCodes.ADDED_METADATA_SUCCESSFULLY or
+              store_result == cache_codes.CacheCodes.UPDATED_METADATA_SUCCESSFULLY):
             return jsonify({
-                'success': True,
-                'message': ("Uploaded under %s. %d bytes remain."
+                "success": True,
+                "message": ("Uploaded under %s. %d bytes remain."
                             % (key, self.max_size - self.total_content))
             })
         else:
             return jsonify({
-                'success': False,
-                'error': 500,
-                'message': "Unexpected server error."
+                "success": False,
+                "error": 500,
+                "message": "Unexpected server error."
             })
+
+    def is_present(self, key):
+        """
+        Checks whether a key is present in the cache. n.b. that this is not a guarantee that the
+        key will still be present at the time of a future get_file() call and should be used only
+        as an optimization.
+
+        Args:
+            key (string): The key to check.
+        Returns:
+            The json record '{ "present": true }' if the key is present and '{"present": false}'
+            otherwise.
+        """
+        if key in self.ordered_items:
+            return jsonify({"present": True})
+        else:
+            return jsonify({"present": False})
 
     def get_file(self, key):
         """

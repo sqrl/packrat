@@ -12,7 +12,7 @@ app = Flask(__name__)
 @app.route('/<key>', methods=['GET', 'POST'])
 def set_or_get(key=None):
     """
-    Route for uploading a file.  Expects a key parameter.
+    Route for uploading a file. Expects a key parameter.
     """
     # TODO: What if a user uploads a file with a blank filename?
     if not key:
@@ -24,6 +24,17 @@ def set_or_get(key=None):
     if not file:
         abort(404)
     return send_file(file[0], as_attachment=True, attachment_filename=file[1])
+
+
+@app.route('/exists/<key>', methods=['GET'])
+def key_exists(key=None):
+    """
+    Route for checking if a key exists. Expects a key parameter.
+    """
+    if not key:
+        abort(400)
+
+    return cache.is_present(key)
 
 
 @app.route('/')
