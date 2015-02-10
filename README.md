@@ -30,6 +30,9 @@ is a a web API for packrat.
  file must be included as `form-data` with name `file`.  It will return
  a json document whose 'success' field will be true if successful.  If
  unsuccessful, the 'error' and 'message' fields contain more information.
+ * `GET http://127.0.0.1:5050/exists/<key>` Checks for the existence of
+ a key in the cache. Returns a json result of the form
+ `{ "present": true|false }`
 
 A Python example of uploading a picture `cat.png` with the key `cat`
 using the  [requests library](http://docs.python-requests.org/) looks
