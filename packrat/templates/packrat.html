@@ -23,6 +23,6 @@
 </form>
 <h2>Cache Stats</h2>
 <p>Serving {{ files }} files, consuming {{ total_size }} out of {{ max_size }} bytes
-    ({{ '%0.2f' % (total_size / max_size)|float }}% full).</p>
+    ({{ '%0.2f' % (total_size * 100 / max_size)|float }}% full).</p>
 </body>
 </html>
